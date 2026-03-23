@@ -1783,7 +1783,7 @@ function renderWardenStudentDetail() {
     const st = db.students[appState.selectedStudent];
 
     return `
-        < div class= "dashboard-layout animate-fade-in" >
+        <div class= "dashboard-layout animate-fade-in">
             <aside class="sidebar">
                 <div class="sidebar-brand"><i class="ph-fill ph-fork-knife" style="color: var(--warning-color)"></i><span>SmartMess Admin</span></div>
                 <ul class="nav-menu">
