@@ -1930,7 +1930,7 @@ function renderWardenMatrix() {
     }).join('');
 
     return `
-        < div style = "overflow-x: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--surface-border);" >
+        <div style = "overflow-x: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--surface-border);" >
             <table class="data-table" style="width: 100%; font-size: 0.9rem;">
                 <thead>
                     <tr>
@@ -1943,7 +1943,7 @@ function renderWardenMatrix() {
                 </thead>
                 <tbody>${tableRows}</tbody>
             </table>
-        </div >
+        </div>
         `;
 }
 
