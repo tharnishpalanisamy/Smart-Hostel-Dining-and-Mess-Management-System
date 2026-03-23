@@ -1883,12 +1883,12 @@ function renderWardenMatrix() {
         const rowMeals = st.nextWeekMeals[day];
 
         let lunchTd = `
-        < div style = "display: flex; justify-content: center;" >
+        <div style = "display: flex; justify-content: center;">
             ${mkToggle(day, 'lunch', rowMeals.lunch, false, true)
             }
             </div > `;
         let dinnerTd = `
-        < div style = "display: flex; justify-content: center;" >
+        <div style = "display: flex; justify-content: center;">
             ${mkToggle(day, 'dinner', rowMeals.dinner, false, true)}
             </div > `;
 
@@ -1899,19 +1899,19 @@ function renderWardenMatrix() {
         } else if (day === 'thu') {
             const iceFn = `updateIceCream(this.checked, true)`;
             const iceHtml = `
-        < div style = "display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 0.70rem; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 6px; width: max-content; margin: 0 auto; line-height: 1;" >
+        <div style = "display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 0.70rem; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 6px; width: max-content; margin: 0 auto; line-height: 1;" >
                 <span class="pref-label ${st.nextWeekMeals.thuIceCream ? 'active-nonveg' : ''}" style="${st.nextWeekMeals.thuIceCream ? 'color: var(--primary-color);' : ''}">Ice Cream 🍦</span>
                 <label class="toggle-switch sm">
                     <input type="checkbox" ${st.nextWeekMeals.thuIceCream ? 'checked' : ''} onchange="${iceFn}">
                     <span class="toggle-slider pref-slider" style="background-color: ${st.nextWeekMeals.thuIceCream ? 'var(--primary-color)' : 'var(--surface-border)'}"></span>
                 </label>
-            </div >
+            </div>
         `;
             dinnerTd = mkPrefToggle('thu', 'dinner', rowMeals.dinner, 'thuDinnerPref', st.nextWeekMeals.thuDinnerPref, 'Veg', 'Non-Veg', false, true, iceHtml);
         }
 
         return `
-        < tr style = "border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);" >
+        <tr style = "border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);" >
                 <td style="font-weight: 600; padding: 12px;">${dayNames[day]}</td>
                 <td style="text-align: center; vertical-align: middle;">
                     <div style="display: flex; justify-content: center;">
@@ -1925,7 +1925,7 @@ function renderWardenMatrix() {
                     </div>
                 </td>
                 <td style="text-align: center; vertical-align: middle;">${dinnerTd}</td>
-            </tr >
+            </tr>
         `;
     }).join('');
 
