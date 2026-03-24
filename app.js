@@ -142,7 +142,7 @@ function generateYamunaStudents() {
     return studentsList;
 }
 
-const db = {
+let db = {
     students: generateYamunaStudents(),
     warden: {
         id: 'WARDEN01',
@@ -160,8 +160,36 @@ const db = {
         dayOfWeek: 2,
         startHour: 6,
         endHour: 18
+    },
+    messTimings: {
+        breakfast: { start: "07:00", end: "09:30" },
+        lunch: { start: "12:00", end: "14:00" },
+        snack: { start: "16:00", end: "18:00" },
+        dinner: { start: "19:00", end: "20:30" }
     }
 };
+
+const savedData = localStorage.getItem('sm_db_v1');
+if (savedData) {
+    try {
+        const parsed = JSON.parse(savedData);
+        if (parsed.students && parsed.warden) {
+            db = parsed;
+            if (!db.messTimings) {
+                db.messTimings = {
+                    breakfast: { start: "07:00", end: "09:30" },
+                    lunch: { start: "12:00", end: "14:00" },
+                    snack: { start: "16:00", end: "18:00" },
+                    dinner: { start: "19:00", end: "20:30" }
+                };
+            }
+        }
+    } catch (e) { }
+}
+
+function saveDb() {
+    localStorage.setItem('sm_db_v1', JSON.stringify(db));
+}
 
 function getBookingWindowText() {
     const shortenDay = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -190,6 +218,7 @@ function checkIsBookingOpen() {
 }
 
 function render() {
+    saveDb();
     const app = document.getElementById('app');
 
     if (appState.view === 'login') {
@@ -305,9 +334,10 @@ function handleLogin(e) {
     } else {
         const studentIndex = db.students.findIndex(s => s.rollNo.toUpperCase() === userInput.toUpperCase());
         if (studentIndex > -1) {
-            if (db.students[studentIndex].password === passInput) {
+            const stu = db.students[studentIndex];
+            if (stu.password === passInput || (stu.isFirstLogin && stu.password.toUpperCase() === passInput.toUpperCase())) {
                 appState.selectedStudent = studentIndex;
-                if (db.students[studentIndex].isFirstLogin) {
+                if (stu.isFirstLogin) {
                     appState.view = 'student-first-login';
                 } else {
                     appState.view = 'student-dashboard';
@@ -572,7 +602,7 @@ function renderLogin() {
 // STUDENT VIEWS
 // ============================
 function renderStudentDashboard() {
-    const student = db.students[0];
+    const student = db.students[appState.selectedStudent];
 
     let mainContentHtml = '';
 
@@ -889,9 +919,25 @@ function mkPrefToggle(day, meal, checkedVal, prefKey, prefVal, label1, label2, d
     `;
 }
 
+function getNextWeekDates() {
+    const now = new Date();
+    const nextSunday = new Date(now);
+    nextSunday.setDate(now.getDate() + (7 - now.getDay())); // Next week begins upcoming Sunday
+
+    const dates = {};
+    const daysOrder = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    daysOrder.forEach((dayKey, index) => {
+        const d = new Date(nextSunday);
+        d.setDate(nextSunday.getDate() + index);
+        dates[dayKey] = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    });
+    return dates;
+}
+
 function renderStudentBookingMatrix(student, isBookingOpen) {
     const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     const dayNames = { sun: "Sunday", mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday" };
+    const dateLabels = getNextWeekDates();
     const disableAttr = !isBookingOpen;
 
     const rows = days.map(day => {
@@ -926,7 +972,7 @@ function renderStudentBookingMatrix(student, isBookingOpen) {
 
         return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                <td style="font-weight: 600; padding: 12px;">${dayNames[day]}</td>
+                <td style="font-weight: 600; padding: 12px; line-height: 1.4;">${dayNames[day]} <br><span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">${dateLabels[day]}</span></td>
                 <td style="text-align: center; vertical-align: middle; padding: 8px;">
                     <div style="display: flex; justify-content: center;">
                         ${mkToggle(day, 'breakfast', rowMeals.breakfast, disableAttr)}
@@ -964,7 +1010,7 @@ function renderStudentBookingMatrix(student, isBookingOpen) {
 }
 
 window.confirmNextWeekBooking = function () {
-    const student = db.students[0];
+    const student = db.students[appState.selectedStudent];
     let activeMeals = 0;
     const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -992,6 +1038,13 @@ window.confirmNextWeekBooking = function () {
         exists.timestamp = new Date().getTime();
     }
 
+    // Sync today's 'meals' object with the newly booked week so the QR Scanner reflects changes immediately today
+    const currentDay = days[new Date().getDay()];
+    student.meals.breakfast = student.nextWeekMeals[currentDay].breakfast;
+    student.meals.lunch = student.nextWeekMeals[currentDay].lunch;
+    student.meals.snack = student.nextWeekMeals[currentDay].snack;
+    student.meals.dinner = student.nextWeekMeals[currentDay].dinner;
+
     // Update QR barcode based on new confirmation
     student.barcode = student.rollNo + '-' + Date.now().toString().slice(-6);
 
@@ -1005,7 +1058,7 @@ window.studentToggleMeal = function (day, key, isBookingOpen) {
         alert("Booking is only open on " + getBookingWindowText() + ".");
         return;
     }
-    const st = db.students[0];
+    const st = db.students[appState.selectedStudent];
     if (st.nextWeekMeals[day][key] === 'booked') {
         st.nextWeekMeals[day][key] = 'canceled';
     } else {
@@ -1368,14 +1421,13 @@ function renderWardenDashboard() {
                             <div class="form-group"><label>Department</label><input type="text" id="addDept" class="input-field" required></div>
                             <div class="form-group">
                                 <label>Hostel</label>
-                                <select id="addHostel" class="input-field" onchange="updateAddRoomOptions()" required>
+                                <select id="addHostel" class="input-field" required>
                                     <option value="">Select Hostel</option>
                                     ${hostels.map(h => `<option value="${h}">${h}</option>`).join('')}
                                 </select>
                             </div>
-                            <div class="form-group" id="addRoomGroup">
+                            <div class="form-group">
                                 <label>Room No</label>
-                                <select id="addRoomSelect" class="input-field" style="display:none;"></select>
                                 <input type="text" id="addRoomInput" class="input-field" placeholder="Enter Room No" required>
                             </div>
                         </div>
@@ -1387,7 +1439,7 @@ function renderWardenDashboard() {
                 <!-- Bulk Onboarding -->
                 <div class="glass-panel" style="padding: 24px;">
                     <h3 style="margin-bottom: 16px; border-bottom: 1px solid var(--surface-border); padding-bottom: 8px;"><i class="ph-fill ph-users"></i> Bulk Excel/CSV Onboard</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px;">Upload a CSV file with columns: <strong>RollNo, Name, Course, Department, Hostel, RoomNo</strong>.</p>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px;">Upload a CSV file with columns: <strong>RollNo, Name, Course, Department, Hostel, RoomNo</strong>. <br><a href="#" onclick="downloadSampleCSV()" style="color: var(--primary-color);">Download Sample Format</a></p>
                     <div style="border: 2px dashed var(--surface-border); padding: 32px; text-align: center; border-radius: 8px; margin-bottom: 16px;">
                         <i class="ph-fill ph-file-csv" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 8px;"></i><br>
                         <input type="file" id="bulkUploadFile" accept=".csv" style="display: none;" onchange="handleBulkAdd()">
@@ -1451,6 +1503,29 @@ function renderWardenDashboard() {
                     </div>
                     <button type="submit" class="btn btn-primary" style="align-self: flex-start; margin-top: 10px;"><i class="ph-bold ph-floppy-disk"></i> Update Protocol</button>
                 </form>
+                
+                <h3 style="margin-top: 30px; margin-bottom: 20px; border-bottom: 1px solid var(--surface-border); padding-bottom: 12px;"><i class="ph-fill ph-user-gear"></i> Warden Profile</h3>
+                <form id="wardenProfileForm" onsubmit="window.saveWardenProfile(event)" style="display: flex; flex-direction: column; gap: 16px;">
+                    <div class="form-group"><label>Name</label><input type="text" id="setWardenName" class="input-field" value="${db.warden.name}" required></div>
+                    <div class="form-group"><label>Hostel</label><input type="text" id="setWardenHostel" class="input-field" value="${db.warden.hostel}" required></div>
+                    <div class="form-group"><label>Role</label><input type="text" id="setWardenRole" class="input-field" value="${db.warden.role}" required></div>
+                    <button type="submit" class="btn btn-primary" style="align-self: flex-start; margin-top: 10px;"><i class="ph-bold ph-floppy-disk"></i> Update Profile</button>
+                </form>
+
+                <h3 style="margin-top: 30px; margin-bottom: 20px; border-bottom: 1px solid var(--surface-border); padding-bottom: 12px;"><i class="ph-fill ph-clock"></i> Mess Timings Protocol</h3>
+                <form id="messTimingsForm" onsubmit="window.saveMessTimings(event)" style="display: flex; flex-direction: column; gap: 16px;">
+                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: center;">
+                        <label>Breakfast Timing</label>
+                        <div style="display: flex; gap: 8px; align-items: center;"><input type="time" id="setBreakStart" class="input-field" value="${db.messTimings.breakfast.start}" required> <span style="color: var(--text-muted);">to</span> <input type="time" id="setBreakEnd" class="input-field" value="${db.messTimings.breakfast.end}" required></div>
+                        <label>Lunch Timing</label>
+                        <div style="display: flex; gap: 8px; align-items: center;"><input type="time" id="setLunchStart" class="input-field" value="${db.messTimings.lunch.start}" required> <span style="color: var(--text-muted);">to</span> <input type="time" id="setLunchEnd" class="input-field" value="${db.messTimings.lunch.end}" required></div>
+                        <label>Snack Timing</label>
+                        <div style="display: flex; gap: 8px; align-items: center;"><input type="time" id="setSnackStart" class="input-field" value="${db.messTimings.snack.start}" required> <span style="color: var(--text-muted);">to</span> <input type="time" id="setSnackEnd" class="input-field" value="${db.messTimings.snack.end}" required></div>
+                        <label>Dinner Timing</label>
+                        <div style="display: flex; gap: 8px; align-items: center;"><input type="time" id="setDinnerStart" class="input-field" value="${db.messTimings.dinner.start}" required> <span style="color: var(--text-muted);">to</span> <input type="time" id="setDinnerEnd" class="input-field" value="${db.messTimings.dinner.end}" required></div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="align-self: flex-start; margin-top: 10px;"><i class="ph-bold ph-floppy-disk"></i> Update Timings</button>
+                </form>
             </div>
         `;
     }
@@ -1482,6 +1557,7 @@ function renderWardenDashboard() {
                 <div class="glass-panel animate-fade-in" style="padding: 24px; width: 100%; max-width: 500px;">
                     <h3 style="margin-bottom: 16px; border-bottom: 1px solid var(--surface-border); padding-bottom: 8px;">Edit Student Details</h3>
                     <form onsubmit="saveEditedStudent(event, ${appState.editingStudentIndex})" style="display: flex; flex-direction: column; gap: 12px;">
+                        <div class="form-group"><label>Roll Number</label><input type="text" id="editStuRollNo" class="input-field" value="${db.students[appState.editingStudentIndex].rollNo}" required></div>
                         <div class="form-group"><label>Name</label><input type="text" id="editStuName" class="input-field" value="${db.students[appState.editingStudentIndex].name}" required></div>
                         <div class="form-group"><label>Course</label><input type="text" id="editStuCourse" class="input-field" value="${db.students[appState.editingStudentIndex].course}" required></div>
                         <div class="form-group"><label>Department</label><input type="text" id="editStuDept" class="input-field" value="${db.students[appState.editingStudentIndex].department}" required></div>
@@ -1511,6 +1587,7 @@ window.cancelEditStudent = function () {
 window.saveEditedStudent = function (e, idx) {
     e.preventDefault();
     const st = db.students[idx];
+    st.rollNo = document.getElementById('editStuRollNo').value.toUpperCase();
     st.name = document.getElementById('editStuName').value.toUpperCase();
     st.course = document.getElementById('editStuCourse').value;
     st.department = document.getElementById('editStuDept').value;
@@ -1529,12 +1606,7 @@ window.handleSingleAdd = function (e) {
     const dept = document.getElementById('addDept').value;
     const hostel = document.getElementById('addHostel').value;
 
-    let roomNo = "";
-    if (hostel === 'Yamuna') {
-        roomNo = document.getElementById('addRoomSelect').value;
-    } else {
-        roomNo = document.getElementById('addRoomInput').value;
-    }
+    let roomNo = document.getElementById('addRoomInput').value;
 
     if (!roomNo || roomNo.trim() === "") {
         alert("Please enter or select a valid Room No.");
@@ -1676,10 +1748,10 @@ window.updateAddRoomOptions = function () {
         roomInput.required = false;
 
         let options = '<option value="">Select Room</option>';
-        for (let i = 1; i <= 24; i++) options += `< option value = "YA-${i}" > YA - ${i} (Ground)</option > `;
-        for (let i = 101; i <= 124; i++) options += `< option value = "YA-${i}" > YA - ${i} (1st Fl)</option > `;
-        for (let i = 201; i <= 224; i++) options += `< option value = "YA-${i}" > YA - ${i} (2nd Fl)</option > `;
-        for (let i = 301; i <= 324; i++) options += `< option value = "YA-${i}" > YA - ${i} (3rd Fl)</option > `;
+        for (let i = 1; i <= 24; i++) options += `<option value = "YA-${i}" > YA - ${i} (Ground)</option> `;
+        for (let i = 101; i <= 124; i++) options += `<option value = "YA-${i}" > YA - ${i} (1st Fl)</option> `;
+        for (let i = 201; i <= 224; i++) options += `<option value = "YA-${i}" > YA - ${i} (2nd Fl)</option> `;
+        for (let i = 301; i <= 324; i++) options += `<option value = "YA-${i}" > YA - ${i} (3rd Fl)</option> `;
 
         roomSelect.innerHTML = options;
     } else {
@@ -1743,28 +1815,58 @@ function handleRealQRScan(code) {
     const student = db.students.find(s => s.barcode === code);
 
     if (!student) {
-        resDiv.innerHTML = `< div style = "background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger-color); padding: 16px; border-radius: 8px;" >
+        resDiv.innerHTML = `<div style = "background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger-color); padding: 16px; border-radius: 8px;" >
         <p style="color: var(--danger-color);"><i class="ph-fill ph-x-circle"></i> Invalid QR Code. Student not found in system.</p>
-        </div > `;
+        </div> `;
         return;
     }
 
-    // Attempting entry for current meal (simplification: assume current meal based on time, using 'lunch' here for demo)
-    const currentMeal = "lunch";
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    const time = h + m / 60;
+
+    const timeToFloat = (timeStr) => {
+        const [h, m] = timeStr.split(':');
+        return parseInt(h) + parseInt(m) / 60;
+    };
+
+    const bStart = timeToFloat(db.messTimings.breakfast.start);
+    const bEnd = timeToFloat(db.messTimings.breakfast.end);
+    const lStart = timeToFloat(db.messTimings.lunch.start);
+    const lEnd = timeToFloat(db.messTimings.lunch.end);
+    const sStart = timeToFloat(db.messTimings.snack.start);
+    const sEnd = timeToFloat(db.messTimings.snack.end);
+    const dStart = timeToFloat(db.messTimings.dinner.start);
+    const dEnd = timeToFloat(db.messTimings.dinner.end);
+
+    let currentMeal = null;
+    if (time >= bStart && time < bEnd) currentMeal = "breakfast";
+    else if (time >= lStart && time < lEnd) currentMeal = "lunch";
+    else if (time >= sStart && time < sEnd) currentMeal = "snack";
+    else if (time >= dStart && time < dEnd) currentMeal = "dinner";
+
+    if (!currentMeal) {
+        resDiv.innerHTML = `<div style = "background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning-color); padding: 16px; border-radius: 8px;" >
+            <p style="color: var(--warning-color);"><i class="ph-fill ph-warning-circle"></i> No Active Meal Session!</p>
+            <p style="color: white; margin-top: 4px;">Currently outside of any designated mess timings.</p>
+        </div> `;
+        return;
+    }
 
     if (student.meals[currentMeal] !== 'booked') {
-        resDiv.innerHTML = `< div style = "background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger-color); padding: 16px; border-radius: 8px;" >
+        resDiv.innerHTML = `<div style = "background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger-color); padding: 16px; border-radius: 8px;" >
             <p style="color: var(--danger-color);"><i class="ph-fill ph-x-circle"></i> Denied Entry!</p>
             <p style="color: white; margin-top: 4px;"><strong>${student.name} (${student.rollNo})</strong> did NOT book ${currentMeal} for today.</p>
-        </div > `;
+        </div> `;
         return;
     }
 
     if (student.scannedMeals.includes(currentMeal)) {
-        resDiv.innerHTML = `< div style = "background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning-color); padding: 16px; border-radius: 8px;" >
+        resDiv.innerHTML = `<div style = "background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning-color); padding: 16px; border-radius: 8px;" >
             <p style="color: var(--warning-color);"><i class="ph-fill ph-warning-circle"></i> Duplicate Scan Prevented!</p>
             <p style="color: white; margin-top: 4px;"><strong>${student.name} (${student.rollNo})</strong> has already entered the mess hall for ${currentMeal}.</p>
-        </div > `;
+        </div> `;
         return;
     }
 
@@ -1772,18 +1874,44 @@ function handleRealQRScan(code) {
     student.scannedMeals.push(currentMeal);
     student.attendance.today = 'Present';
 
-    resDiv.innerHTML = `< div style = "background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success-color); padding: 16px; border-radius: 8px;" >
-        <p style="color: var(--success-color);"><i class="ph-fill ph-check-circle"></i> Access Granted!</p>
-        <p style="color: white; margin-top: 4px;"><strong>${student.name} (${student.rollNo})</strong> marked present for ${currentMeal}.</p>
-        <p style="color: var(--success-color); font-size: 0.85rem; margin-top: 8px;"><i class="ph-bold ph-check"></i> Daily Attendance auto-marked as Present.</p>
-    </div > `;
+    // Calculate today's stats: booked, ate, missed.
+    let totalBooked = 0;
+    let totalAte = student.scannedMeals.length;
+    let totalMissed = 0;
+
+    const timings = { breakfast: bEnd, lunch: lEnd, snack: sEnd, dinner: dEnd };
+    ['breakfast', 'lunch', 'snack', 'dinner'].forEach(mealName => {
+        if (student.meals[mealName] === 'booked') {
+            totalBooked++;
+            // If the meal is booked, the time has passed, and it was NOT scanned, it is missed.
+            // Or if it's the current meal (just scanned), it's not missed.
+            if (!student.scannedMeals.includes(mealName) && time >= timings[mealName]) {
+                totalMissed++;
+            }
+        }
+    });
+
+    resDiv.innerHTML = `<div style = "background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success-color); padding: 16px; border-radius: 8px; text-align: left;" >
+        <p style="color: var(--success-color); font-size: 1.1rem; font-weight: bold;"><i class="ph-fill ph-check-circle"></i> Access Granted! (${currentMeal.toUpperCase()})</p>
+        <p style="color: white; margin-top: 8px;"><strong>${student.name} (${student.rollNo})</strong> authorized for entry.</p>
+        <div style="margin-top: 12px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px;">
+            <p style="color: var(--text-primary); font-size: 0.85rem; margin-bottom: 4px; text-transform: uppercase;">TODAY'S ACTIVITY SUMMARY</p>
+            <p style="font-size: 0.9rem; color: #fff;">Meals Booked Today: <strong>${totalBooked}</strong></p>
+            <p style="font-size: 0.9rem; color: var(--success-color);">Meals Consumed: <strong>${totalAte}</strong></p>
+            <p style="font-size: 0.9rem; color: ${totalMissed > 0 ? 'var(--danger-color)' : 'var(--text-muted)'};">Meals Missed: <strong>${totalMissed}</strong></p>
+        </div>
+        <p style="color: var(--success-color); font-size: 0.8rem; margin-top: 10px;"><i class="ph-bold ph-check"></i> Daily Attendance marked as Present.</p>
+    </div> `;
+
+    // Save state persistence
+    saveDb();
 }
 
 function renderWardenStudentDetail() {
     const st = db.students[appState.selectedStudent];
 
     return `
-        <div class= "dashboard-layout animate-fade-in">
+        <div class= "dashboard-layout animate-fade-in" >
             <aside class="sidebar">
                 <div class="sidebar-brand"><i class="ph-fill ph-fork-knife" style="color: var(--warning-color)"></i><span>SmartMess Admin</span></div>
                 <ul class="nav-menu">
@@ -1870,7 +1998,7 @@ function renderWardenStudentDetail() {
                     ${st.pastBookings && st.pastBookings.length > 0 ? renderPastWeeklyDetails(st.pastBookings[0].details) : '<p style="color: var(--text-muted);">No past bookings found for this student.</p>'}
                 </div>
             </main>
-        </div >
+        </div>
         `;
 }
 
@@ -1878,19 +2006,20 @@ function renderWardenMatrix() {
     const st = db.students[appState.selectedStudent];
     const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     const dayNames = { sun: "Sunday", mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday" };
+    const dateLabels = getNextWeekDates();
 
     let tableRows = days.map(day => {
         const rowMeals = st.nextWeekMeals[day];
 
         let lunchTd = `
-        <div style = "display: flex; justify-content: center;">
+        <div style = "display: flex; justify-content: center;" >
             ${mkToggle(day, 'lunch', rowMeals.lunch, false, true)
             }
-            </div > `;
+            </div> `;
         let dinnerTd = `
-        <div style = "display: flex; justify-content: center;">
+        <div style = "display: flex; justify-content: center;" >
             ${mkToggle(day, 'dinner', rowMeals.dinner, false, true)}
-            </div > `;
+            </div> `;
 
         if (day === 'sun') {
             lunchTd = mkPrefToggle('sun', 'lunch', rowMeals.lunch, 'sunLunchPref', st.nextWeekMeals.sunLunchPref, 'Veg', 'Non-Veg', false, true);
@@ -1912,7 +2041,7 @@ function renderWardenMatrix() {
 
         return `
         <tr style = "border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);" >
-                <td style="font-weight: 600; padding: 12px;">${dayNames[day]}</td>
+                <td style="font-weight: 600; padding: 12px; line-height: 1.4;">${dayNames[day]} <br><span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">${dateLabels[day]}</span></td>
                 <td style="text-align: center; vertical-align: middle;">
                     <div style="display: flex; justify-content: center;">
                         ${mkToggle(day, 'breakfast', rowMeals.breakfast, false, true)}
@@ -1954,6 +2083,14 @@ window.wardenToggleNextWeekMeal = function (day, dbKey) {
     } else {
         st.nextWeekMeals[day][dbKey] = 'booked';
     }
+
+    // Sync current day's active meals if the warden edits 'today's' preferences so the QR Scanner respects it immediately
+    const daysArr = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const currentDay = daysArr[new Date().getDay()];
+    if (day === currentDay) {
+        st.meals[dbKey] = st.nextWeekMeals[day][dbKey];
+    }
+
     render();
 }
 
@@ -2144,6 +2281,81 @@ window.saveBookingSettings = function (e) {
     alert("Booking settings updated successfully!");
     render();
 }
+
+window.downloadSampleCSV = function () {
+    const header = "RollNo,Name,Course,Department,Hostel,RoomNo\n21BCT015,ANANYA P,B.Tech,Information Tech,Yamuna,YA-101\n";
+    const blob = new Blob([header], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sample_bulk_onboard.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+};
+
+window.saveWardenProfile = function (e) {
+    if (e) e.preventDefault();
+    db.warden.name = document.getElementById('setWardenName').value;
+    db.warden.hostel = document.getElementById('setWardenHostel').value;
+    db.warden.role = document.getElementById('setWardenRole').value;
+    alert("Warden profile updated successfully!");
+    render();
+};
+
+window.saveMessTimings = function (e) {
+    if (e) e.preventDefault();
+    db.messTimings.breakfast.start = document.getElementById('setBreakStart').value;
+    db.messTimings.breakfast.end = document.getElementById('setBreakEnd').value;
+    db.messTimings.lunch.start = document.getElementById('setLunchStart').value;
+    db.messTimings.lunch.end = document.getElementById('setLunchEnd').value;
+    db.messTimings.snack.start = document.getElementById('setSnackStart').value;
+    db.messTimings.snack.end = document.getElementById('setSnackEnd').value;
+    db.messTimings.dinner.start = document.getElementById('setDinnerStart').value;
+    db.messTimings.dinner.end = document.getElementById('setDinnerEnd').value;
+    alert("Mess timings updated successfully! The QR Scanner will now use these timings.");
+    render();
+};
+
+window.removeStudent = function (idx) {
+    if (confirm("Are you sure you want to permanently remove " + db.students[idx].name + "?")) {
+        db.students.splice(idx, 1);
+        alert("Student removed successfully.");
+        render();
+    }
+};
+
+window.toggleAllCheckboxes = function (el) {
+    const checkboxes = document.querySelectorAll('.student-checkbox');
+    checkboxes.forEach(cb => cb.checked = el.checked);
+};
+
+window.bulkRemoveStudents = function () {
+    const checkboxes = document.querySelectorAll('.student-checkbox:checked');
+    if (checkboxes.length === 0) {
+        alert("Please select at least one student to remove.");
+        return;
+    }
+    if (confirm("Are you sure you want to remove " + checkboxes.length + " selected students?")) {
+        // Collect indices to remove (descending order to avoid index shifting)
+        const indices = Array.from(checkboxes).map(cb => parseInt(cb.value)).sort((a, b) => b - a);
+        indices.forEach(idx => db.students.splice(idx, 1));
+        alert("Selected students removed successfully.");
+        render();
+    }
+};
+
+window.downloadStudentBudgetPDF = function (idx, deduct) {
+    alert("Generating Expense Ledger PDF for student " + db.students[idx].rollNo + " worth ₹ " + deduct + "...");
+};
+
+window.downloadMasterLedgerPDF = function () {
+    alert("Compiling Master Ledger Excel Sheet... The download will begin shortly.");
+};
+
+window.downloadKitchenPDF = function () {
+    alert("Downloading Kitchen Prep Schedule PDF...");
+};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', render);

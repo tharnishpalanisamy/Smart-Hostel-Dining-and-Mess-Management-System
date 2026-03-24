@@ -559,7 +559,11 @@ a:hover {
     font-size: 0.9rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    background: rgba(0, 0, 0, 0.2);
+    background: #11151a;
+    /* solid dark background for sticky */
+    position: sticky;
+    top: 0;
+    z-index: 10;
 }
 
 .data-table tbody tr {
